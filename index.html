@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Premium 3D Viewer</title>
+  <!-- Google Fonts for Modern Typography -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+  <!-- 3D Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Premium UI Overlay -->
+  <div id="ui-overlay">
+    <header>
+      <h1>Booth Model</h1>
+      <p>Interactive 3D Preview</p>
+    </header>
+
+    <div class="controls">
+      <p><strong>Controls</strong></p>
+      <ul>
+        <li><strong>Left Click + Drag:</strong> Rotate Model</li>
+        <li><strong>Right Click + Drag:</strong> Pan Model</li>
+        <li><strong>Scroll:</strong> Zoom In/Out</li>
+        <li><strong>Double Click:</strong> Zoom to Point</li>
+        <li><strong>Arrow Keys:</strong> Pan Model</li>
+      </ul>
+    </div>
+
+    <div class="button-group" style="display:flex;gap:10px;">
+      <button id="reset-camera-btn">Reset Camera</button>
+      <button id="auto-rotate-btn">Auto-Rotate</button>
+    </div>
+  </div>
+
+  <!-- 3D Object Info Popup -->
+  <div id="info-popup" class="hidden">
+    <h3 id="info-title">Part Name</h3>
+    <p>Interactive Element</p>
+  </div>
+
+  <!-- Loading Screen Overlay -->
+  <div id="loading-screen">
+    <div class="loader">
+      <div class="spinner"></div>
+      <h2 id="loading-text">Loading 3D Model...</h2>
+      <div class="progress-bar-container">
+        <div id="progress-bar"></div>
+      </div>
+      <p id="loading-percentage">0%</p>
+    </div>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+
+</html>
