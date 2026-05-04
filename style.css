@@ -2,8 +2,8 @@
   --primary-color: #6366f1;
   /* Indigo */
   --primary-hover: #4f46e5;
-  --bg-color: #0f172a;
-  /* Slate 900 */
+  --bg-color: #916a6a;
+  /* Black */
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --glass-bg: rgba(15, 23, 42, 0.6);
@@ -25,7 +25,7 @@ body {
   /* Fallback */
   color: var(--text-primary);
   /* Aesthetic dark gradient background behind everything */
-  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  background: #997c7c;
 }
 
 #canvas-container {

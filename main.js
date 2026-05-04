@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
 // DOM Elements
 const container = document.getElementById('canvas-container');
@@ -13,68 +14,118 @@ const autoRotateBtn = document.getElementById('auto-rotate-btn');
 const infoPopup = document.getElementById('info-popup');
 const infoTitle = document.getElementById('info-title');
 
-// Interactivity Raycaster
+// Raycaster
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2(-1, -1);
-let hoveredObject = null;
 
-// Scene setup
+// ─── Scene ───────────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-// No background color set here, making the scene transparent so the CSS radial gradient shows through
 
-// Camera setup
+// ─── Camera ──────────────────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
-const initialCameraPosition = new THREE.Vector3(0, 5, 20); // Setup standard isometric view
+const initialCameraPosition = new THREE.Vector3(0, 5, 20);
 camera.position.copy(initialCameraPosition);
 
-// Renderer setup
+// ─── Renderer ────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+// ACES filmic tone mapping + boosted exposure = cinematic / real-world feel
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.2;
+
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// Physically correct lighting mode
+renderer.useLegacyLights = false;
+
 container.appendChild(renderer.domElement);
 
-// Controls
+// ─── Controls ────────────────────────────────────────────────────────────────
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.minDistance = 1;
 controls.maxDistance = 5000;
-// controls.maxPolarAngle = Math.PI / 2 + 0.1; // Limit angle if expecting a ground model
-controls.listenToKeyEvents(window); // Enable default keyboard interactivity (Arrow keys)
+controls.listenToKeyEvents(window);
 controls.keyPanSpeed = 25.0;
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// ─── ENVIRONMENT MAP (HDR) ───────────────────────────────────────────────────
+// Uses a free public HDR from Poly Haven CDN — gives real reflections & GI
+const rgbeLoader = new RGBELoader();
+rgbeLoader.load(
+  'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr',
+  (hdrTexture) => {
+    hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
+    // Use as scene environment (reflections/GI) but NOT as background
+    scene.environment = hdrTexture;
+    // Optionally show subtle sky: comment out if you want transparent bg
+    // scene.background = hdrTexture;
+  },
+  undefined,
+  () => {
+    // Fallback: if HDR fails (offline / CORS) generate a synthetic env
+    console.warn('HDR load failed, using procedural environment');
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+
+    // Build a simple gradient environment texture
+    const envScene = new THREE.Scene();
+    envScene.background = new THREE.Color(0x444444);
+    const envRT = pmremGenerator.fromScene(new THREE.RoomEnvironment(), 0.04);
+    scene.environment = envRT.texture;
+    pmremGenerator.dispose();
+  }
+);
+
+// ─── LIGHTING RIG ────────────────────────────────────────────────────────────
+// 1. Ambient — base fill so nothing goes pitch black
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
 scene.add(ambientLight);
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-directionalLight.position.set(100, 200, 50);
-directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.width = 2048;
-directionalLight.shadow.mapSize.height = 2048;
-directionalLight.shadow.camera.left = -50;
-directionalLight.shadow.camera.right = 50;
-directionalLight.shadow.camera.top = 50;
-directionalLight.shadow.camera.bottom = -50;
-scene.add(directionalLight);
+// 2. Key light — main directional, warm sunlight angle
+const keyLight = new THREE.DirectionalLight(0xfff5e0, 2.5);
+keyLight.position.set(80, 200, 60);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.width = 4096;
+keyLight.shadow.mapSize.height = 4096;
+keyLight.shadow.camera.left = -80;
+keyLight.shadow.camera.right = 80;
+keyLight.shadow.camera.top = 80;
+keyLight.shadow.camera.bottom = -80;
+keyLight.shadow.bias = -0.001;
+scene.add(keyLight);
 
-const fillLight = new THREE.DirectionalLight(0xa5b4fc, 0.8);
-fillLight.position.set(-100, 50, -50);
+// 3. Fill light — cooler, from opposite side to soften shadows
+const fillLight = new THREE.DirectionalLight(0xc9d9ff, 1.0);
+fillLight.position.set(-100, 60, -80);
 scene.add(fillLight);
 
-// Handle Window Resize
-window.addEventListener('resize', onWindowResize, false);
-function onWindowResize() {
+// 4. Rim / back light — creates edge separation so model "pops"
+const rimLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+rimLight.position.set(0, -50, -200);
+scene.add(rimLight);
+
+// 5. Under-fill — lights the bottom so orbiting under the model looks good
+const underLight = new THREE.DirectionalLight(0xddeeff, 0.6);
+underLight.position.set(0, -200, 0);
+scene.add(underLight);
+
+// 6. Point lights for local warmth & depth (positioned after model loads)
+const pointLight1 = new THREE.PointLight(0xffe8c0, 1.5, 0); // warm
+const pointLight2 = new THREE.PointLight(0xc0d8ff, 1.2, 0); // cool
+scene.add(pointLight1, pointLight2);
+
+// ─── Resize ──────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-}
+});
 
-// Interactivity Events
+// ─── Mouse / Interaction ─────────────────────────────────────────────────────
 window.addEventListener('mousemove', (event) => {
   mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
   mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -91,31 +142,23 @@ window.addEventListener('dblclick', (event) => {
       const point = intersects[0].point;
       const dist = camera.position.distanceTo(point);
       const dir = camera.position.clone().sub(point).normalize();
-
-      // Target is 25% away from the clicked point
       const targetCamPos = point.clone().add(dir.multiplyScalar(dist * 0.25));
 
       const startPos = camera.position.clone();
       const startTarget = controls.target.clone();
       let animTime = 0;
       const duration = 45;
-
-      controls.enabled = false; // Disable controls during animation
+      controls.enabled = false;
 
       function animateZoom() {
         animTime++;
         const t = Math.min(1, animTime / duration);
         const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
         camera.position.lerpVectors(startPos, targetCamPos, ease);
         controls.target.lerpVectors(startTarget, point, ease);
         controls.update();
-
-        if (animTime < duration) {
-          requestAnimationFrame(animateZoom);
-        } else {
-          controls.enabled = true; // Re-enable controls
-        }
+        if (animTime < duration) requestAnimationFrame(animateZoom);
+        else controls.enabled = true;
       }
       animateZoom();
     }
@@ -131,9 +174,9 @@ window.addEventListener('click', (event) => {
     const intersects = raycaster.intersectObject(rootModel, true);
     if (intersects.length > 0) {
       const object = intersects[0].object;
-      infoTitle.textContent = object.name || "Geometry Part";
-      infoPopup.style.left = (event.clientX + 15) + "px";
-      infoPopup.style.top = (event.clientY + 15) + "px";
+      infoTitle.textContent = object.name || 'Geometry Part';
+      infoPopup.style.left = (event.clientX + 15) + 'px';
+      infoPopup.style.top = (event.clientY + 15) + 'px';
       infoPopup.classList.add('visible');
 
       const origScale = object.scale.clone();
@@ -145,52 +188,51 @@ window.addEventListener('click', (event) => {
   }
 });
 
+// ─── Auto-Rotate ─────────────────────────────────────────────────────────────
 let isAutoRotating = false;
 autoRotateBtn.addEventListener('click', () => {
   isAutoRotating = !isAutoRotating;
   controls.autoRotate = isAutoRotating;
   controls.autoRotateSpeed = 2.0;
-  autoRotateBtn.style.background = isAutoRotating ? "var(--primary-hover)" : "var(--primary-color)";
-  autoRotateBtn.textContent = isAutoRotating ? "Stop Auto-Rotate" : "Auto-Rotate";
+  autoRotateBtn.style.background = isAutoRotating ? 'var(--primary-hover)' : 'var(--primary-color)';
+  autoRotateBtn.textContent = isAutoRotating ? 'Stop Auto-Rotate' : 'Auto-Rotate';
 });
 
-
-// Global reference for our model
+// ─── Model Loading ───────────────────────────────────────────────────────────
 let rootModel = null;
 
-// Loading Manager & GLTFLoader Setup
 const manager = new THREE.LoadingManager();
-manager.onProgress = function (url, itemsLoaded, itemsTotal) {
-  // Update progress bar
-};
-
-// Set up Draco loader in case the GLB uses draco compression
 const gltfLoader = new GLTFLoader(manager);
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
 gltfLoader.setDRACOLoader(dracoLoader);
 
 gltfLoader.load(
-  '/w booth.glb', // Should be in the public directory
+  '/w booth.glb',
   (gltf) => {
-    // success
     rootModel = gltf.scene;
 
-    // Enable shadows for the model
     rootModel.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
         node.receiveShadow = true;
 
-        // Ensure standard materials look good with environment/lights
-        if (node.material && node.material.isMeshStandardMaterial) {
-          node.material.envMapIntensity = 1.0;
+        if (node.material) {
+          // Boost env map so HDR reflections actually show
+          node.material.envMapIntensity = 1.5;
+
+          // If material has no roughness/metalness defined, give it sane defaults
+          if (node.material.isMeshStandardMaterial) {
+            if (node.material.roughness === undefined) node.material.roughness = 0.5;
+            if (node.material.metalness === undefined) node.material.metalness = 0.0;
+          }
+
+          node.material.needsUpdate = true;
         }
       }
     });
 
-    // Center and scale the model automatically to fit the view
-    // Perfectly center the model based on its actual bounding box
+    // ── Center & fit ──────────────────────────────────────────────────────
     const box = new THREE.Box3().setFromObject(rootModel);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -199,119 +241,106 @@ gltfLoader.load(
     rootModel.position.y += (rootModel.position.y - center.y);
     rootModel.position.z += (rootModel.position.z - center.z);
 
-    // Adjust camera to fit the model completely
     const maxDim = Math.max(size.x, size.y, size.z) || 10;
     const fov = camera.fov * (Math.PI / 180);
-    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-    cameraZ *= 1.5; // Padding
+    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5;
 
-    // Prevent clipping issues with very large or very small models
     camera.near = maxDim / 1000;
     camera.far = maxDim * 10000;
-
-    // Set new camera positions from an isometric-like angle outside the box
     camera.position.set(maxDim * 0.5, maxDim * 0.5, cameraZ);
     camera.updateProjectionMatrix();
 
-    // Update target for OrbitControls
     controls.target.set(0, 0, 0);
     controls.maxDistance = maxDim * 1000;
     controls.update();
-
-    // Cache the updated position for the reset button
     initialCameraPosition.copy(camera.position);
+
+    // ── Position point lights relative to model ───────────────────────────
+    pointLight1.position.set(maxDim * 1.5, maxDim, maxDim * 1.5);
+    pointLight1.distance = maxDim * 8;
+    pointLight1.decay = 2;
+
+    pointLight2.position.set(-maxDim * 1.5, maxDim * 0.5, -maxDim);
+    pointLight2.distance = maxDim * 8;
+    pointLight2.decay = 2;
+
+    // Scale shadow cameras to match model size
+    const shadowCam = keyLight.shadow.camera;
+    const shadowRange = maxDim * 1.2;
+    shadowCam.left = -shadowRange;
+    shadowCam.right = shadowRange;
+    shadowCam.top = shadowRange;
+    shadowCam.bottom = -shadowRange;
+    shadowCam.updateProjectionMatrix();
+    keyLight.position.set(maxDim * 2, maxDim * 4, maxDim);
 
     scene.add(rootModel);
 
-    // Hide loader smoothly
     setTimeout(() => {
       loadingScreen.style.opacity = '0';
-      setTimeout(() => {
-        loadingScreen.style.display = 'none';
-      }, 800);
+      setTimeout(() => { loadingScreen.style.display = 'none'; }, 800);
     }, 500);
   },
   (xhr) => {
-    // progress
     const percent = Math.round((xhr.loaded / xhr.total) * 100);
     if (Number.isFinite(percent)) {
       progressBar.style.width = percent + '%';
       loadingPercentage.textContent = percent + '%';
     } else {
-      // If the server doesn't respond with content-length
-      let mockProgress = (progressBar.style.width).replace('%', '') || 0;
-      mockProgress = parseFloat(mockProgress) + 1;
-      if (mockProgress > 95) mockProgress = 95;
-      progressBar.style.width = mockProgress + '%';
-      loadingPercentage.textContent = 'Loading large file...';
+      let mock = parseFloat((progressBar.style.width || '0').replace('%', '')) + 1;
+      if (mock > 95) mock = 95;
+      progressBar.style.width = mock + '%';
+      loadingPercentage.textContent = 'Loading…';
     }
   },
   (error) => {
-    // error
-    console.error('An error happened initializing the GLTF Loader:', error);
-    document.getElementById('loading-text').textContent = "Error Loading Model!";
-    document.getElementById('loading-text').style.color = "#ef4444";
+    console.error('GLTFLoader error:', error);
+    document.getElementById('loading-text').textContent = 'Error Loading Model!';
+    document.getElementById('loading-text').style.color = '#ef4444';
   }
 );
 
-// Reset functionality
+// ─── Reset ───────────────────────────────────────────────────────────────────
 resetBtn.addEventListener('click', () => {
-  // Animate camera back smoothly using simple interpolation
   const startPos = camera.position.clone();
   const endPos = initialCameraPosition.clone();
   const startTarget = controls.target.clone();
-  const endTarget = new THREE.Vector3(0, 0, 0);
-
   let time = 0;
-  const duration = 60; // frames
+  const duration = 60;
 
   function animateReset() {
     time++;
     const t = Math.min(1, time / duration);
-    // easeInOutQuad
     const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-
     camera.position.lerpVectors(startPos, endPos, ease);
-    controls.target.lerpVectors(startTarget, endTarget, ease);
-
-    if (time < duration) {
-      requestAnimationFrame(animateReset);
-    }
+    controls.target.lerpVectors(startTarget, new THREE.Vector3(0, 0, 0), ease);
+    if (time < duration) requestAnimationFrame(animateReset);
   }
-
   animateReset();
 });
 
-// Render Loop
+// ─── Render Loop ─────────────────────────────────────────────────────────────
 const clock = new THREE.Clock();
+
 function animate() {
   requestAnimationFrame(animate);
+  const elapsed = clock.getElapsedTime();
 
-  const delta = clock.getDelta();
+  // Subtle light animation — makes the scene feel alive
+  // Key light breathes slightly (simulates soft natural light variation)
+  keyLight.intensity = 2.5 + Math.sin(elapsed * 0.3) * 0.15;
 
-  raycaster.setFromCamera(mouse, camera);
+  // Point lights orbit slowly around the model for dynamic highlights
   if (rootModel) {
-    const intersects = raycaster.intersectObject(rootModel, true);
-    if (intersects.length > 0) {
-      if (hoveredObject !== intersects[0].object) {
-        if (hoveredObject && hoveredObject.material) {
-          if (hoveredObject.material.color) hoveredObject.material.color.setHex(hoveredObject.currentColor);
-        }
-        hoveredObject = intersects[0].object;
-        if (hoveredObject.material) {
-          if (hoveredObject.material.color) {
-            hoveredObject.currentColor = hoveredObject.material.color.getHex();
-            // Highlight color by blending base with a slight tint
-            hoveredObject.material.color.setHex(0xa5b4fc);
-          }
-        }
-      }
-    } else {
-      if (hoveredObject && hoveredObject.material) {
-        if (hoveredObject.material.color) hoveredObject.material.color.setHex(hoveredObject.currentColor);
-      }
-      hoveredObject = null;
-    }
+    const box = new THREE.Box3().setFromObject(rootModel);
+    const size = box.getSize(new THREE.Vector3());
+    const r = Math.max(size.x, size.y, size.z) * 1.5;
+
+    pointLight1.position.x = Math.cos(elapsed * 0.2) * r;
+    pointLight1.position.z = Math.sin(elapsed * 0.2) * r;
+
+    pointLight2.position.x = Math.cos(elapsed * 0.2 + Math.PI) * r;
+    pointLight2.position.z = Math.sin(elapsed * 0.2 + Math.PI) * r;
   }
 
   controls.update();
