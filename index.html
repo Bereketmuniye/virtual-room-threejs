@@ -1,62 +1,172 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Premium 3D Viewer</title>
-  <!-- Google Fonts for Modern Typography -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <title>APEX 3D — World Class Renderer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
 </head>
-
 <body>
-  <!-- 3D Canvas Container -->
-  <div id="canvas-container"></div>
 
-  <!-- Premium UI Overlay -->
-  <div id="ui-overlay">
-    <header>
-      <h1>Booth Model</h1>
-      <p>Interactive 3D Preview</p>
-    </header>
+  <!-- Custom Cursor -->
+  <div id="cursor"></div>
+  <div id="cursor-ring"></div>
 
-    <div class="controls">
-      <p><strong>Controls</strong></p>
-      <ul>
-        <li><strong>Left Click + Drag:</strong> Rotate Model</li>
-        <li><strong>Right Click + Drag:</strong> Pan Model</li>
-        <li><strong>Scroll:</strong> Zoom In/Out</li>
-        <li><strong>Double Click:</strong> Zoom to Point</li>
-        <li><strong>Arrow Keys:</strong> Pan Model</li>
-      </ul>
+  <!-- Aurora Background -->
+  <div id="aurora">
+    <div class="aurora-orb ao1"></div>
+    <div class="aurora-orb ao2"></div>
+    <div class="aurora-orb ao3"></div>
+  </div>
+  <div id="scanlines"></div>
+  <div id="grid-overlay"></div>
+
+  <!-- Corner Brackets -->
+  <div class="corner c-tl"></div>
+  <div class="corner c-tr"></div>
+  <div class="corner c-bl"></div>
+  <div class="corner c-br"></div>
+
+  <!-- Top Bar -->
+  <div id="topbar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <span class="brand-name">Tibeb Furniture Render</span>
+      <span class="brand-version">v4.2.1</span>
     </div>
-
-    <div class="button-group" style="display:flex;gap:10px;">
-      <button id="reset-camera-btn">Reset Camera</button>
-      <button id="auto-rotate-btn">Auto-Rotate</button>
-    </div>
+    <div class="topbar-spacer"></div>
+    <div class="status-chip sc-live">LIVE</div>
+    <div class="status-chip sc-fps" id="fps-chip">-- FPS</div>
+    <div class="topbar-time" id="clock">00:00:00</div>
   </div>
 
-  <!-- 3D Object Info Popup -->
-  <div id="info-popup" class="hidden">
-    <h3 id="info-title">Part Name</h3>
-    <p>Interactive Element</p>
-  </div>
+  <!-- Left Panel -->
+  <div id="left-panel">
 
-  <!-- Loading Screen Overlay -->
-  <div id="loading-screen">
-    <div class="loader">
-      <div class="spinner"></div>
-      <h2 id="loading-text">Loading 3D Model...</h2>
-      <div class="progress-bar-container">
-        <div id="progress-bar"></div>
+    <div class="panel">
+      <div class="panel-label">Render Stats</div>
+      <div class="stats-grid">
+        <div class="stat-cell">
+          <div class="stat-val green" id="fps-val">--</div>
+          <div class="stat-lbl">FPS</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-val purple" id="triangles-val">--</div>
+          <div class="stat-lbl">Triangles</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-val gold" id="drawcalls-val">--</div>
+          <div class="stat-lbl">Draw Calls</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-val red" id="vram-val">-- GB</div>
+          <div class="stat-lbl">VRAM Est.</div>
+        </div>
       </div>
-      <p id="loading-percentage">0%</p>
     </div>
+
+    <div class="panel">
+      <div class="panel-label">Navigation</div>
+      <div class="ctrl-row"><span class="ctrl-key">LMB + Drag</span><span class="ctrl-desc">Orbit</span></div>
+      <div class="ctrl-row"><span class="ctrl-key">RMB + Drag</span><span class="ctrl-desc">Pan</span></div>
+      <div class="ctrl-row"><span class="ctrl-key">Scroll</span><span class="ctrl-desc">Zoom</span></div>
+      <div class="ctrl-row"><span class="ctrl-key">Dbl Click</span><span class="ctrl-desc">Focus point</span></div>
+      <div class="ctrl-row"><span class="ctrl-key">← → ↑ ↓</span><span class="ctrl-desc">Pan keys</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Controls</div>
+      <div class="btn-group">
+        <button class="apex-btn" id="reset-camera-btn">
+          <span>Reset Camera</span><span class="btn-arrow">↺</span>
+        </button>
+        <button class="apex-btn" id="auto-rotate-btn">
+          <span>Auto Rotate</span><span class="btn-arrow">⟳</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right Panel -->
+  <div id="right-panel">
+
+    <div class="panel">
+      <div class="panel-label">Render Mode</div>
+      <div class="mode-list" id="mode-list">
+        <div class="mode-item selected" data-mode="lit"><div class="mode-dot"></div>PBR Lit</div>
+        <div class="mode-item" data-mode="wireframe"><div class="mode-dot"></div>Wireframe</div>
+        <div class="mode-item" data-mode="normals"><div class="mode-dot"></div>Normals</div>
+        <div class="mode-item" data-mode="ao"><div class="mode-dot"></div>Ambient Occ.</div>
+        <div class="mode-item" data-mode="depth"><div class="mode-dot"></div>Depth</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Light Rig</div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Key Light</span><span class="slider-val" id="v-key">2.5</span></div>
+        <input type="range" min="0" max="5" step="0.1" value="2.5" id="s-key"/>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Fill Light</span><span class="slider-val" id="v-fill">1.0</span></div>
+        <input type="range" min="0" max="3" step="0.1" value="1.0" id="s-fill"/>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Exposure</span><span class="slider-val" id="v-exp">1.2</span></div>
+        <input type="range" min="0" max="3" step="0.1" value="1.2" id="s-exp"/>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Env IBL</span><span class="slider-val" id="v-ibl">1.5</span></div>
+        <input type="range" min="0" max="3" step="0.1" value="1.5" id="s-ibl"/>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-label">Render Activity</div>
+      <div id="waveform"></div>
+    </div>
+
+  </div>
+
+  <!-- 3D Viewport -->
+  <div id="viewport">
+    <div id="canvas-container"></div>
+  </div>
+
+  <!-- Info Popup -->
+  <div id="info-popup">
+    <div id="info-title">Geometry</div>
+    <div class="info-sub">INTERACTIVE ELEMENT</div>
+  </div>
+
+  <!-- Bottom Bar -->
+  <div id="bottombar">
+    <div class="bb-item"><div class="bb-dot" style="background:var(--accent)"></div>ENGINE READY</div>
+    <div class="progress-seg"><div class="progress-fill" style="width:100%"></div></div>
+    <div class="bb-item" id="poly-count">POLYGONS: —</div>
+    <div class="bb-item" id="load-status">MODEL: LOADING</div>
+    <div class="bb-item"><div class="bb-dot" style="background:var(--accent2)"></div>PBR PIPELINE</div>
+  </div>
+
+  <!-- Coordinate HUD -->
+  <div id="coord-hud">
+    <span>X <span class="coord-val" id="cx">0.000</span></span>
+    <span>Y <span class="coord-val" id="cy">0.000</span></span>
+    <span>Z <span class="coord-val" id="cz">0.000</span></span>
+    <span>CAM <span class="coord-val" id="cam-dist">--</span></span>
+  </div>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="load-logo">TIBEB DESIGN AND SOLUTIONS</div>
+    <div class="load-sub">Furniture Renderer</div>
+    <div class="load-bar-track"><div id="load-bar"></div></div>
+    <div class="load-pct" id="load-pct">0%</div>
+    <div class="load-phase" id="load-phase">Initializing engine...</div>
   </div>
 
   <script type="module" src="./main.js"></script>
 </body>
-
 </html>
